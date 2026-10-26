@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 const {
   PORT = 3000, ANTHROPIC_API_KEY, ANTHROPIC_MODEL = 'claude-sonnet-5-5',
   ANTHROPIC_WORKSPACE_ID, NOTION_TOKEN, TOMTOM_KEY, LAT = '50.8365', LON = '-0.7792', PLACE = 'Chichester',
+  INFLUX_URL = 'http://influxdb:8086', INFLUX_ORG = 'home', INFLUX_BUCKET = 'enviro', INFLUX_TOKEN,
 } = process.env;
 
 const BLOCK = /trump/i;
@@ -144,6 +145,50 @@ app.get('/api/traffic', async (_req, res) => {
     });
     res.json({ incidents, links });
   } catch (e) { res.status(502).json({ error: e.message, links }); }
+});
+
+// weather station (InfluxDB, bucket written to by the Enviro board over the LAN)
+const STATION_MEAN = ['temperature', 'humidity', 'pressure', 'wind_speed', 'luminance', 'voltage'];
+const STATION_RANGES = { today: ['today()', '15m'], '24h': ['-24h', '15m'], '7d': ['-7d', '2h'], '30d': ['-30d', '6h'] };
+
+app.get('/api/station', async (req, res) => {
+  if (!INFLUX_TOKEN) return res.json({ latest: null, reason: 'INFLUX_TOKEN not set' });
+  const range = STATION_RANGES[req.query.range] ? req.query.range : '24h';
+  try {
+    const data = await cached(`station:${range}`, 2 * 60e3, async () => {
+      const [start, win] = STATION_RANGES[range];
+      const meanFilter = STATION_MEAN.map((m) => `r._measurement == "${m}"`).join(' or ');
+      const flux = `
+base = from(bucket: "${INFLUX_BUCKET}") |> range(start: ${start}) |> filter(fn: (r) => r._field == "value")
+base |> filter(fn: (r) => ${meanFilter}) |> aggregateWindow(every: ${win}, fn: mean, createEmpty: false) |> yield(name: "series")
+base |> filter(fn: (r) => r._measurement == "rain") |> aggregateWindow(every: ${win}, fn: sum, createEmpty: false) |> yield(name: "rainseries")
+from(bucket: "${INFLUX_BUCKET}") |> range(start: -48h) |> filter(fn: (r) => r._field == "value") |> last() |> yield(name: "latest")
+from(bucket: "${INFLUX_BUCKET}") |> range(start: today()) |> filter(fn: (r) => r._measurement == "rain" and r._field == "value") |> sum() |> yield(name: "rainToday")`;
+      const r = await fetch(`${INFLUX_URL}/api/v2/query?org=${encodeURIComponent(INFLUX_ORG)}`, {
+        method: 'POST',
+        headers: { authorization: `Token ${INFLUX_TOKEN}`, 'content-type': 'application/vnd.flux', accept: 'application/csv' },
+        body: flux, signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) throw new Error(`influx ${r.status}: ${(await r.text()).slice(0, 200)}`);
+      const latest = {}, series = {};
+      let rainToday = 0, cols = null;
+      for (const line of (await r.text()).split('\n')) {
+        const l = line.trim();
+        if (!l) { cols = null; continue; }
+        if (l.startsWith('#')) continue;
+        const c = l.split(',');
+        if (c.includes('_value')) { cols = Object.fromEntries(c.map((k, i) => [k, i])); continue; }
+        if (!cols) continue;
+        const m = c[cols._measurement], v = +c[cols._value];
+        if (!m || m.startsWith('test') || !Number.isFinite(v)) continue;
+        if (c[1] === 'latest') latest[m] = { v, t: c[cols._time] };
+        else if (c[1] === 'rainToday') rainToday = v;
+        else (series[m] ||= []).push([Date.parse(c[cols._time]), v]);
+      }
+      return { range, latest, series, rainToday };
+    });
+    res.json(data);
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
 app.get('/api/artifacts', async (_req, res) => {

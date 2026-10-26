@@ -1,9 +1,47 @@
 services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    depends_on:
+      - startpage
+
   startpage:
     build: .
-    ports:
-      - "3100:3000"
+    # no published ports — reachable only through caddy
     env_file: .env
     volumes:
       - ./data:/app/data:ro
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2
+    container_name: influxdb
+    # LAN-only in practice: the router forwards 80/443 only; the weather
+    # station writes to this port from inside the network
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb2-data:/var/lib/influxdb2
+      - influxdb2-config:/etc/influxdb2
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
+  influxdb2-data:
+    external: true
+  influxdb2-config:
+    external: true

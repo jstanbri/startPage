@@ -1,0 +1,22 @@
+# Self-hosted CA for now (install Caddy's root cert on your devices to
+# silence warnings). Once a public domain is decided, replace the site
+# address with it and the tls line with a DNS-01 config for real certs.
+{
+	# serve the IP cert when the client sends no SNI (https://192.168.1.232)
+	default_sni 192.168.1.232
+}
+
+192.168.1.232, morganpi.local, localhost {
+	tls internal
+
+	encode gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	reverse_proxy startpage:3000
+}
