@@ -1,11 +1,25 @@
-# Self-hosted CA for now (install Caddy's root cert on your devices to
-# silence warnings). Once a public domain is decided, replace the site
-# address with it and the tls line with a DNS-01 config for real certs.
 {
 	# serve the IP cert when the client sends no SNI (https://192.168.1.232)
 	default_sni 192.168.1.232
 }
 
+# Public hostname (No-IP DDNS): real Let's Encrypt certs via HTTP-01 —
+# requires the router to forward 80 and 443 here.
+purposebridge.zapto.org {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	reverse_proxy startpage:3000
+}
+
+# LAN names keep the self-hosted CA (works even without hairpin NAT).
 192.168.1.232, morganpi.local, localhost {
 	tls internal
 
