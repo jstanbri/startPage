@@ -1,0 +1,9 @@
+services:
+  startpage:
+    build: .
+    ports:
+      - "3100:3000"
+    env_file: .env
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped
