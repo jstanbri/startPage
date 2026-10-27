@@ -46,6 +46,7 @@
   .sev1 { color:var(--warn) } .sev2,.sev3,.sev4 { color:var(--bad) }
   .links a { display:inline-block; margin:6px 8px 0 0; padding:4px 10px; border:1px solid var(--line); border-radius:999px; font-size:13px }
   .err { color:var(--mute); font-style:italic }
+  .due-over { color:var(--bad); font-weight:600 } .due-soon { color:var(--warn); font-weight:600 }
   /* station */
   .st-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px }
   .banner { border:1px solid var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent);
@@ -87,7 +88,7 @@
       <section class="card"><h2>Traffic</h2><div id="traffic"></div></section>
     </div>
     <section class="card col4"><h2>Latest Claude artifacts</h2><ul id="artifacts"></ul></section>
-    <section class="card col4"><h2>Notion · recently edited</h2><ul id="notion"></ul></section>
+    <section class="card col4"><h2>Notion · tasks by due date</h2><ul id="notion"></ul></section>
   </div>
 
   <div id="view-station" hidden>
@@ -163,11 +164,27 @@ async function artifacts() {
   } catch (e) { fail($('artifacts'), e); }
 }
 
+function dueLabel(due) {
+  if (!due) return { text: 'no due date', cls: '' };
+  const d = new Date(due.slice(0, 10) + 'T00:00:00');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((d - today) / 864e5);
+  if (days < 0) return { text: `overdue ${-days}d`, cls: 'due-over' };
+  if (days === 0) return { text: 'due today', cls: 'due-soon' };
+  if (days === 1) return { text: 'due tomorrow', cls: 'due-soon' };
+  return { text: `due ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`, cls: '' };
+}
+
 async function notion() {
   try {
     const n = await j('/api/notion');
-    if (!n.pages) return $('notion').innerHTML = `<span class="err">${esc(n.reason)}</span>`;
-    $('notion').innerHTML = n.pages.map((p) => `<li><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.icon)} ${esc(p.title)}</a><div class="meta">edited ${ago(p.edited)} ago</div></li>`).join('');
+    if (!n.tasks) return $('notion').innerHTML = `<span class="err">${esc(n.reason)}</span>`;
+    if (!n.tasks.length) return $('notion').innerHTML = '<span class="err">No open tasks</span>';
+    $('notion').innerHTML = n.tasks.map((t) => {
+      const due = dueLabel(t.due);
+      return `<li><a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.icon)} ${esc(t.title)}</a>
+        <div class="meta"><span class="${due.cls}">${esc(due.text)}</span> · ${esc(t.status)}${t.priority ? ` · ${esc(t.priority)}` : ''}</div></li>`;
+    }).join('');
   } catch (e) { fail($('notion'), e); }
 }
 

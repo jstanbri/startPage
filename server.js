@@ -196,26 +196,39 @@ app.get('/api/artifacts', async (_req, res) => {
   catch { res.json([]); }
 });
 
+const NOTION_TASKS_DB = '3ca8292dc3038068943ceb497c98fa4d'; // Tasks tracker
 app.get('/api/notion', async (_req, res) => {
-  if (!NOTION_TOKEN) return res.json({ pages: null, reason: 'NOTION_TOKEN not set' });
+  if (!NOTION_TOKEN) return res.json({ tasks: null, reason: 'NOTION_TOKEN not set' });
   try {
-    const pages = await cached('notion', 5 * 60e3, async () => {
-      const r = await fetch('https://api.notion.com/v1/search', {
+    const tasks = await cached('notion', 5 * 60e3, async () => {
+      const r = await fetch(`https://api.notion.com/v1/databases/${NOTION_TASKS_DB}/query`, {
         method: 'POST',
         headers: { authorization: `Bearer ${NOTION_TOKEN}`, 'notion-version': '2022-06-28', 'content-type': 'application/json' },
-        body: JSON.stringify({ page_size: 10, sort: { direction: 'descending', timestamp: 'last_edited_time' } }),
+        body: JSON.stringify({
+          page_size: 25,
+          filter: { or: [
+            { property: 'Status', status: { equals: 'In progress' } },
+            { property: 'Status', status: { equals: 'Not started' } },
+          ] },
+          sorts: [{ property: 'Due date', direction: 'ascending' }],
+        }),
         signal: AbortSignal.timeout(10000),
       });
       if (!r.ok) throw new Error(`notion ${r.status}`);
       const j = await r.json();
-      return j.results.map((p) => {
-        const props = Object.values(p.properties || {});
-        const rt = props.find((x) => x.type === 'title')?.title;
-        const t = [Array.isArray(rt) ? rt : p.title].flat().filter(Boolean).map((x) => x.plain_text).join('') || 'Untitled';
-        return { title: t, url: p.url, edited: p.last_edited_time, icon: p.icon?.emoji || '', type: p.object };
-      });
+      const list = j.results.map((p) => ({
+        title: p.properties['Task name']?.title?.map((x) => x.plain_text).join('') || 'Untitled',
+        url: p.url,
+        due: p.properties['Due date']?.date?.start || null,
+        status: p.properties['Status']?.status?.name || '',
+        priority: p.properties['Priority']?.select?.name || '',
+        icon: p.icon?.emoji || '',
+      }));
+      // dated tasks first (soonest due), undated after
+      list.sort((a, b) => (a.due ? (b.due ? a.due.localeCompare(b.due) : -1) : (b.due ? 1 : 0)));
+      return list.slice(0, 10);
     });
-    res.json({ pages });
+    res.json({ tasks });
   } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
