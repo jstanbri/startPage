@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jamesy's Start Page</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   :root {
     --bg:#0f1115; --card:#181b22; --line:#262b35; --fg:#e6e8ec; --mute:#8b93a1; --accent:#d97757; --warn:#e5a93c; --bad:#e0596a;
@@ -21,6 +23,8 @@
   main { max-width:1280px; margin:0 auto; padding:24px 16px 48px; }
   header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px; flex-wrap:wrap; gap:8px }
   h1 { font-size:26px; margin:0; font-weight:600 } #clock { color:var(--mute) }
+  .brand { display:flex; align-items:center; gap:10px }
+  .logo { width:34px; height:34px }
   .tabs { display:flex; gap:6px }
   .tabs button, .ranges button { background:none; border:1px solid var(--line); color:var(--mute); border-radius:999px; padding:5px 14px; font:inherit; font-size:13px; cursor:pointer }
   .tabs button:hover, .ranges button:hover { color:var(--fg) }
@@ -68,7 +72,7 @@
 <body>
 <main>
   <header>
-    <h1 id="greet">Hello</h1>
+    <div class="brand"><img class="logo" src="/logo.png" alt="" width="34" height="34"><h1 id="greet">Hello</h1></div>
     <nav class="tabs" id="tabs">
       <button data-view="home" class="on">Home</button>
       <button data-view="station">Weather station</button>
