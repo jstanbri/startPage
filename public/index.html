@@ -44,6 +44,10 @@
   .err { color:var(--mute); font-style:italic }
   /* station */
   .st-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px }
+  .banner { border:1px solid var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent);
+            border-radius:12px; padding:10px 14px; font-size:13px; margin-bottom:16px }
+  .tile.warn .t-val, .tile.warn .t-sub { color:var(--warn) }
+  .tile.bad .t-val, .tile.bad .t-sub { color:var(--bad) }
   .ranges { display:flex; gap:6px }
   .tiles { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); margin-bottom:16px }
   .tile .t-label { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); font-weight:600; margin-bottom:6px }
@@ -92,6 +96,7 @@
       </div>
       <span class="meta" id="st-status"></span>
     </div>
+    <div class="banner" id="st-alert" hidden></div>
     <div class="tiles" id="tiles"></div>
     <div class="grid charts" id="charts"></div>
   </div>
@@ -285,8 +290,8 @@ function drawChart(card, m, pts, range) {
   }
 }
 
-function tile(m, html, sub) {
-  return `<section class="card tile"><div class="t-label">${m.label}</div>
+function tile(m, html, sub, cls) {
+  return `<section class="card tile${cls ? ' ' + cls : ''}"><div class="t-label">${m.label}</div>
     <div class="t-val"><span class="t-dot" style="background:var(${m.cvar})"></span>${html}</div>
     ${sub ? `<div class="t-sub">${sub}</div>` : ''}</section>`;
 }
@@ -303,11 +308,23 @@ function renderStation() {
     L('wind_direction') != null ? `${COMPASS(L('wind_direction'))} · ${L('wind_speed').toFixed(1)} m/s` : null));
   t.push(tile(METRICS[4], `${rainToday.toFixed(2)}<small>mm</small>`, 'since midnight'));
   if (L('luminance') != null) t.push(tile(METRICS[5], `${compact(L('luminance'))}<small>lx</small>`));
-  if (L('voltage') != null) t.push(tile(METRICS[6], `${L('voltage').toFixed(2)}<small>V</small>`));
+  if (L('voltage') != null) {
+    const v = L('voltage'), cls = v < 2.8 ? 'bad' : v < 3.1 ? 'warn' : '';
+    t.push(tile(METRICS[6], `${v.toFixed(2)}<small>V</small>`,
+      cls === 'bad' ? 'critical — replace batteries' : cls === 'warn' ? 'low battery' : null, cls));
+  }
   $('tiles').innerHTML = t.join('');
 
   const reported = latest.temperature?.t || latest.rain?.t;
   $('st-status').textContent = reported ? `perry · last report ${ago(reported)} ago` : 'no recent reports';
+
+  const ageMin = reported ? (Date.now() - new Date(reported)) / 60000 : Infinity;
+  const alert = $('st-alert');
+  alert.hidden = ageMin <= 30;
+  if (!alert.hidden) alert.textContent = reported
+    ? `⚠️ Stale data — perry last reported ${ago(reported)} ago (${new Date(reported).toLocaleString('en-GB',
+        { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}). Check battery/power.`
+    : '⚠️ No reports from perry in the last 48 h — check battery/power.';
 
   $('charts').innerHTML = METRICS.map((m) => (series[m.key] || []).length > 1
     ? `<section class="card chart" data-k="${m.key}"><h2>${m.label} · ${m.unit}</h2><div class="plot"></div></section>` : '').join('');
